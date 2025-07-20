@@ -113,6 +113,23 @@ export type FlashFallbackHandler = (
   error?: unknown,
 ) => Promise<boolean | string | null>;
 
+export interface ThirdPartyProviderSettings {
+  openai?: {
+    apiKey?: string;
+    baseUrl?: string;
+    organization?: string;
+  };
+  anthropic?: {
+    apiKey?: string;
+    baseUrl?: string;
+  };
+  custom?: {
+    apiKey?: string;
+    baseUrl?: string;
+    headers?: Record<string, string>;
+  };
+}
+
 export interface ConfigParameters {
   sessionId: string;
   embeddingModel?: string;
@@ -148,6 +165,7 @@ export interface ConfigParameters {
   extensionContextFilePaths?: string[];
   maxSessionTurns?: number;
   experimentalAcp?: boolean;
+  thirdPartyProviders?: ThirdPartyProviderSettings;
   listExtensions?: boolean;
   extensions?: GeminiCLIExtension[];
   blockedMcpServers?: Array<{ name: string; extensionName: string }>;

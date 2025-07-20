@@ -14,7 +14,7 @@ import {
   GoogleGenAI,
 } from '@google/genai';
 import { createCodeAssistContentGenerator } from '../code_assist/codeAssist.js';
-import { DEFAULT_GEMINI_MODEL } from '../config/models.js';
+import { DEFAULT_GEMINI_MODEL, isThirdPartyModel, getModelConfig } from '../config/models.js';
 import { Config } from '../config/config.js';
 import { getEffectiveModel } from './modelCheck.js';
 import { UserTierId } from '../code_assist/types.js';
@@ -43,6 +43,9 @@ export enum AuthType {
   USE_GEMINI = 'gemini-api-key',
   USE_VERTEX_AI = 'vertex-ai',
   CLOUD_SHELL = 'cloud-shell',
+  USE_OPENAI = 'openai-api-key',
+  USE_ANTHROPIC = 'anthropic-api-key',
+  USE_CUSTOM = 'custom-endpoint',
 }
 
 export type ContentGeneratorConfig = {
@@ -51,6 +54,10 @@ export type ContentGeneratorConfig = {
   vertexai?: boolean;
   authType?: AuthType | undefined;
   proxy?: string | undefined;
+  // Third-party provider configuration
+  baseUrl?: string;
+  provider?: 'google' | 'openai' | 'anthropic' | 'custom';
+  customHeaders?: Record<string, string>;
 };
 
 export function createContentGeneratorConfig(
@@ -61,27 +68,68 @@ export function createContentGeneratorConfig(
   const googleApiKey = process.env.GOOGLE_API_KEY || undefined;
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
+  
+  // Third-party provider environment variables
+  const openaiApiKey = process.env.OPENAI_API_KEY || undefined;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY || undefined;
+  const customEndpoint = process.env.CUSTOM_ENDPOINT || undefined;
+  const customApiKey = process.env.CUSTOM_API_KEY || undefined;
 
   // Use runtime model from config if available, otherwise fallback to parameter or default
   const effectiveModel = config.getModel() || DEFAULT_GEMINI_MODEL;
+  
+  console.log('========== CONTENT GENERATOR ENVIRONMENT CHECK ==========');
+  console.log(`authType: ${authType}`);
+  console.log(`effectiveModel: ${effectiveModel}`);
+  console.log(`customEndpoint: ${customEndpoint}`);
+  console.log(`customApiKey: ${customApiKey ? `${customApiKey.substring(0, 8)}...` : 'undefined'}`);
+  console.log('========================================================');
+
+  // Auto-detect provider based on model if authType is not explicitly set
+  let resolvedAuthType = authType;
+  if (!authType && isThirdPartyModel(effectiveModel)) {
+    const modelConfig = getModelConfig(effectiveModel);
+    if (modelConfig) {
+      switch (modelConfig.provider) {
+        case 'openai':
+          resolvedAuthType = AuthType.USE_OPENAI;
+          break;
+        case 'anthropic':
+          resolvedAuthType = AuthType.USE_ANTHROPIC;
+          break;
+      }
+    }
+  }
 
   const contentGeneratorConfig: ContentGeneratorConfig = {
     model: effectiveModel,
-    authType,
+    authType: resolvedAuthType,
     proxy: config?.getProxy(),
   };
 
+  console.log(`Content generator config: model=${effectiveModel}, authType=${resolvedAuthType}`);
+
+  // Auto-configure third-party provider settings based on model
+  if (isThirdPartyModel(effectiveModel)) {
+    const modelConfig = getModelConfig(effectiveModel);
+    if (modelConfig) {
+      contentGeneratorConfig.provider = modelConfig.provider;
+      contentGeneratorConfig.baseUrl = modelConfig.baseUrl;
+    }
+  }
+
   // If we are using Google auth or we are in Cloud Shell, there is nothing else to validate for now
   if (
-    authType === AuthType.LOGIN_WITH_GOOGLE ||
-    authType === AuthType.CLOUD_SHELL
+    resolvedAuthType === AuthType.LOGIN_WITH_GOOGLE ||
+    resolvedAuthType === AuthType.CLOUD_SHELL
   ) {
     return contentGeneratorConfig;
   }
 
-  if (authType === AuthType.USE_GEMINI && geminiApiKey) {
+  if (resolvedAuthType === AuthType.USE_GEMINI && geminiApiKey) {
     contentGeneratorConfig.apiKey = geminiApiKey;
     contentGeneratorConfig.vertexai = false;
+    contentGeneratorConfig.provider = 'google';
     getEffectiveModel(
       contentGeneratorConfig.apiKey,
       contentGeneratorConfig.model,
@@ -92,12 +140,35 @@ export function createContentGeneratorConfig(
   }
 
   if (
-    authType === AuthType.USE_VERTEX_AI &&
+    resolvedAuthType === AuthType.USE_VERTEX_AI &&
     (googleApiKey || (googleCloudProject && googleCloudLocation))
   ) {
     contentGeneratorConfig.apiKey = googleApiKey;
     contentGeneratorConfig.vertexai = true;
+    contentGeneratorConfig.provider = 'google';
 
+    return contentGeneratorConfig;
+  }
+
+  // Third-party provider configurations
+  if (resolvedAuthType === AuthType.USE_OPENAI && openaiApiKey) {
+    contentGeneratorConfig.apiKey = openaiApiKey;
+    contentGeneratorConfig.provider = 'openai';
+    contentGeneratorConfig.baseUrl = 'https://api.openai.com/v1';
+    return contentGeneratorConfig;
+  }
+
+  if (resolvedAuthType === AuthType.USE_ANTHROPIC && anthropicApiKey) {
+    contentGeneratorConfig.apiKey = anthropicApiKey;
+    contentGeneratorConfig.provider = 'anthropic';
+    contentGeneratorConfig.baseUrl = 'https://api.anthropic.com';
+    return contentGeneratorConfig;
+  }
+
+  if (resolvedAuthType === AuthType.USE_CUSTOM && customApiKey && customEndpoint) {
+    contentGeneratorConfig.apiKey = customApiKey;
+    contentGeneratorConfig.provider = 'custom';
+    contentGeneratorConfig.baseUrl = customEndpoint;
     return contentGeneratorConfig;
   }
 
@@ -138,6 +209,17 @@ export async function createContentGenerator(
     });
 
     return googleGenAI.models;
+  }
+
+  // Handle third-party providers with actual routing to their endpoints
+  if (
+    config.authType === AuthType.USE_OPENAI ||
+    config.authType === AuthType.USE_ANTHROPIC ||
+    config.authType === AuthType.USE_CUSTOM
+  ) {
+    console.log(`Using ThirdPartyContentGenerator for auth type: ${config.authType}, model: ${config.model}`);
+    const { ThirdPartyContentGenerator } = await import('./thirdPartyContentGenerator.js');
+    return new ThirdPartyContentGenerator(config);
   }
 
   throw new Error(

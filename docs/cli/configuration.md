@@ -210,6 +210,41 @@ In addition to a project settings file, a project's `.gemini` directory can cont
     "hideBanner": true
     ```
 
+- **`thirdPartyProviders`** (object):
+  - **Description:** Configuration for third-party AI providers like OpenAI, Anthropic, or custom endpoints.
+  - **Default:** `{}`
+  - **Properties:**
+    - **`openai`** (object): OpenAI configuration
+      - **`apiKey`** (string): OpenAI API key (can also be set via `OPENAI_API_KEY` environment variable)
+      - **`baseUrl`** (string): Custom OpenAI API base URL (optional)
+      - **`organization`** (string): OpenAI organization ID (optional)
+    - **`anthropic`** (object): Anthropic configuration
+      - **`apiKey`** (string): Anthropic API key (can also be set via `ANTHROPIC_API_KEY` environment variable)
+      - **`baseUrl`** (string): Custom Anthropic API base URL (optional)
+    - **`custom`** (object): Custom endpoint configuration
+      - **`apiKey`** (string): API key for custom endpoint (can also be set via `CUSTOM_API_KEY` environment variable)
+      - **`baseUrl`** (string): Custom endpoint base URL (can also be set via `CUSTOM_ENDPOINT` environment variable)
+      - **`headers`** (object): Additional headers to send with requests
+  - **Example:**
+    ```json
+    "thirdPartyProviders": {
+      "openai": {
+        "apiKey": "$OPENAI_API_KEY",
+        "organization": "org-example"
+      },
+      "anthropic": {
+        "apiKey": "$ANTHROPIC_API_KEY"
+      },
+      "custom": {
+        "apiKey": "$CUSTOM_API_KEY",
+        "baseUrl": "https://my-custom-ai.com/v1",
+        "headers": {
+          "X-Custom-Header": "value"
+        }
+      }
+    }
+    ```
+
 - **`maxSessionTurns`** (number):
   - **Description:** Sets the maximum number of turns for a session. If the session exceeds this limit, the CLI will stop processing and start a new chat.
   - **Default:** `-1` (unlimited)
@@ -239,6 +274,18 @@ In addition to a project settings file, a project's `.gemini` directory can cont
   "sandbox": "docker",
   "toolDiscoveryCommand": "bin/get_tools",
   "toolCallCommand": "bin/call_tool",
+  "thirdPartyProviders": {
+    "openai": {
+      "apiKey": "$OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "apiKey": "$ANTHROPIC_API_KEY"
+    },
+    "custom": {
+      "apiKey": "$CUSTOM_API_KEY",
+      "baseUrl": "$CUSTOM_ENDPOINT"
+    }
+  },
   "mcpServers": {
     "mainServer": {
       "command": "bin/mcp_server.py"
@@ -330,6 +377,18 @@ The CLI automatically loads environment variables from an `.env` file. The loadi
 - **`CODE_ASSIST_ENDPOINT`**:
   - Specifies the endpoint for the code assist server.
   - This is useful for development and testing.
+- **`OPENAI_API_KEY`**:
+  - Your OpenAI API key for using OpenAI models (GPT-4, GPT-3.5-turbo, etc.).
+  - Example: `export OPENAI_API_KEY="sk-..."`
+- **`ANTHROPIC_API_KEY`**:
+  - Your Anthropic API key for using Claude models.
+  - Example: `export ANTHROPIC_API_KEY="sk-ant-..."`
+- **`CUSTOM_ENDPOINT`**:
+  - Base URL for a custom AI endpoint.
+  - Example: `export CUSTOM_ENDPOINT="https://my-ai-service.com/v1"`
+- **`CUSTOM_API_KEY`**:
+  - API key for your custom AI endpoint.
+  - Example: `export CUSTOM_API_KEY="custom-key-123"`
 
 ## Command-Line Arguments
 
